@@ -1,0 +1,581 @@
+// DRÖMGÅRDEN — huvudlogik: spelare, djur, verktyg, rendering, spelloop och nät-glue.
+import { World, TILE, T, CROPS, CROP_KEYS } from './world.js';
+import { loadAssets, SHEETS, drawActor, drawShadow, DIR } from './assets.js';
+import { Net } from './net.js';
+import { UI } from './ui.js';
+import { Input } from './input.js';
+
+const SPEED = 4.6;          // rutor/sekund
+const DAY_LEN = 480;        // realsekunder per speldag
+const COLORS = ['#ff7ab6', '#7ac6ff', '#ffd166', '#9be564', '#c78bff', '#ff9f68', '#66d9c8', '#f26d6d'];
+
+// Verktyg i verktygsraden. anim = vilket sprite-ark som spelas.
+const TOOLS = [
+  { key: 'hoe',     label: 'Hacka',  emoji: '⛏️', anim: 'hoe' },
+  { key: 'water',   label: 'Vattna', emoji: '💧', anim: 'water' },
+  { key: 'seed',    label: 'Så',     emoji: '🌱', anim: 'water' },
+  { key: 'harvest', label: 'Skörda', emoji: '🧺', anim: 'scythe' },
+  { key: 'hand',    label: 'Klappa', emoji: '✋', anim: 'idle' },
+];
+const DIR_DELTA = { [DIR.UP]: [0, -1], [DIR.RIGHT]: [1, 0], [DIR.LEFT]: [-1, 0], [DIR.DOWN]: [0, 1] };
+
+class Game {
+  constructor() {
+    this.canvas = document.getElementById('canvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.ui = new UI();
+    this.net = new Net();
+    this.world = new World();
+    this.assets = null;
+    this.mode = 'solo';
+    this.myId = 'host';
+    this.players = new Map();
+    this.animals = [];
+    this.shared = { coins: 60, seeds: { morot: 6, vete: 6, kal: 3, jordgubbe: 3, pumpa: 1 }, produce: {}, day: 1, time: 6 };
+    this.tool = 0;
+    this.selectedSeed = CROP_KEYS[0];
+    this.cam = { x: 0, y: 0 };
+    this.scale = 3;
+    this.now = 0;
+    this.last = 0;
+    this.statsDirty = false;
+    this._acc = { pos: 0, players: 0, animals: 0, stats: 0 };
+    this._nextColor = 0;
+    this._animSeq = 0;
+  }
+
+  async boot() {
+    this.assets = await loadAssets();
+    this.ui.init({
+      onStart: (m) => this.start(m),
+      onOpenShop: () => this.ui.openShop(this.shared, (c) => this.doBuy(c)),
+      onOpenSell: () => this.ui.openSell(this.shared),
+      onSellAll: () => this.doSell(),
+    });
+    this.ui.buildToolbar(TOOLS, (i) => this.selectTool(i));
+    this.ui.buildSeedPicker((k) => { this.selectedSeed = k; });
+    this.ui.setActiveTool(0);
+    this.input = new Input(this.canvas, {
+      onAction: () => this.doAction(),
+      onTool: (i) => { if (i < TOOLS.length) this.selectTool(i); },
+    });
+    window.addEventListener('resize', () => this.resize());
+    this.resize();
+    // Klick på rumskod = kopiera (host)
+    document.getElementById('roomCode').onclick = () => {
+      if (this.mode === 'host' && this.net.code) {
+        navigator.clipboard?.writeText(this.net.code).then(() => this.ui.toast('Kod kopierad: ' + this.net.code));
+      }
+    };
+    this.ui.showMenu();
+  }
+
+  // ---- Start / nät -----------------------------------------------------
+  start(mode) {
+    const name = this.ui.name();
+    if (mode === 'solo') {
+      this.mode = 'solo'; this.myId = 'host';
+      this.world.generate();
+      this.spawnAnimals();
+      this.addPlayer('host', name, this.nextColor(), this.world.spawn.x + 0.5, this.world.spawn.y + 0.5);
+      this.ui.setRoomCode(null, 'solo');
+      this.begin();
+    } else if (mode === 'host') {
+      this.mode = 'host'; this.myId = 'host';
+      this.world.generate();
+      this.spawnAnimals();
+      this.addPlayer('host', name, this.nextColor(), this.world.spawn.x + 0.5, this.world.spawn.y + 0.5);
+      this.ui.menuMsg('Skapar rum…');
+      this.net.on({
+        msg: (from, t, d) => this.onHostMsg(from, t, d),
+        peerLeave: (id) => this.onLeave(id),
+        netError: () => this.ui.menuMsg('Nätverksfel — testa igen.'),
+      });
+      this.net.host((code) => { this.ui.setRoomCode(code, 'host'); this.begin(); this.ui.toast('Rum skapat! Dela koden: ' + code, 4000); });
+    } else if (mode === 'join') {
+      const code = this.ui.joinCode();
+      if (!code || code.length < 4) { this.ui.menuMsg('Skriv en 4-teckens kod.'); return; }
+      this.mode = 'client';
+      this.ui.menuMsg('Ansluter till ' + code + '…');
+      this.net.on({
+        msg: (from, t, d) => this.onClientMsg(t, d),
+        hostLost: () => { this.ui.toast('Värden lämnade spelet 😢', 4000); },
+      });
+      this.net.join(code, () => {
+        this.myId = this.net.myId;
+        this.net.send('hello', { name });
+      }, (err) => this.ui.menuMsg('Kunde inte ansluta (' + err + '). Kolla koden.'));
+    }
+  }
+
+  begin() {
+    this.ui.showGame();
+    this.ui.setRoomCode(this.net.code, this.mode);
+    this.refreshInventoryUI();
+    this.last = performance.now();
+    requestAnimationFrame((t) => this.loop(t));
+  }
+
+  nextColor() { const c = COLORS[this._nextColor % COLORS.length]; this._nextColor++; return c; }
+
+  // ---- Spelare ---------------------------------------------------------
+  addPlayer(id, name, color, x, y) {
+    const p = { id, name, color, x, y, dir: DIR.DOWN, mv: false, actSheet: null, actUntil: 0, animT: 0, frame: 0, sheet: 'idle' };
+    this.players.set(id, p);
+    return p;
+  }
+  me() { return this.players.get(this.myId); }
+
+  // ---- HOST: meddelanden från klienter --------------------------------
+  onHostMsg(from, t, d) {
+    if (t === 'hello') {
+      const color = this.nextColor();
+      const p = this.addPlayer(from, (d.name || 'Bonde').slice(0, 12), color, this.world.spawn.x + 0.5, this.world.spawn.y + 0.5);
+      // skicka världssnapshot
+      this.net.sendTo(from, 'welcome', {
+        you: { id: from, name: p.name, color, x: p.x, y: p.y },
+        world: this.world.snapshot(),
+        shared: this.shared,
+        players: this.serializePlayers(),
+        animals: this.animals,
+      });
+      this.broadcastPlayers();
+      this.ui.toast(p.name + ' gick med! 👋', 3000);
+      this.net.broadcast('toast', { text: p.name + ' gick med! 👋' }, from);
+    } else if (t === 'pos') {
+      const p = this.players.get(from);
+      if (p) { p.x = d.x; p.y = d.y; p.dir = d.dir; p.mv = d.mv; }
+    } else if (t === 'do') {
+      this.applyDo(from, d);
+    }
+  }
+  onLeave(id) {
+    const p = this.players.get(id);
+    if (p) { this.ui.toast(p.name + ' lämnade.', 2500); this.net.broadcast('toast', { text: p.name + ' lämnade.' }); }
+    this.players.delete(id);
+    this.broadcastPlayers();
+  }
+
+  // ---- CLIENT: meddelanden från host ----------------------------------
+  onClientMsg(t, d) {
+    if (t === 'welcome') {
+      this.world.applySnapshot(d.world);
+      this.shared = d.shared;
+      this.animals = d.animals || [];
+      this.players.clear();
+      for (const sp of d.players) this.addPlayer(sp.id, sp.name, sp.color, sp.x, sp.y);
+      const you = d.you;
+      if (!this.players.has(you.id)) this.addPlayer(you.id, you.name, you.color, you.x, you.y);
+      this.myId = you.id;
+      this.begin();
+    } else if (t === 'players') {
+      for (const sp of d) {
+        if (sp.id === this.myId) continue; // egna positionen predikteras lokalt
+        let p = this.players.get(sp.id);
+        if (!p) p = this.addPlayer(sp.id, sp.name, sp.color, sp.x, sp.y);
+        p.x = sp.x; p.y = sp.y; p.dir = sp.dir; p.mv = sp.mv; p.name = sp.name; p.color = sp.color;
+        if (sp.act && p.actSheet !== sp.act) { p.actSheet = sp.act; p.actUntil = this.now + 0.5; p.animT = 0; }
+      }
+      // ta bort spelare som inte längre finns
+      const ids = new Set(d.map((s) => s.id));
+      for (const id of [...this.players.keys()]) if (id !== this.myId && !ids.has(id)) this.players.delete(id);
+    } else if (t === 'tile') {
+      this.world.applyTile(d);
+    } else if (t === 'animals') {
+      this.animals = d;
+    } else if (t === 'stats') {
+      this.shared = d;
+      this.refreshInventoryUI();
+    } else if (t === 'toast') {
+      this.ui.toast(d.text);
+    }
+  }
+
+  serializePlayers() {
+    const arr = [];
+    for (const p of this.players.values()) {
+      arr.push({ id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, dir: p.dir, mv: p.mv,
+        act: this.now < p.actUntil ? p.actSheet : null });
+    }
+    return arr;
+  }
+  broadcastPlayers() { if (this.mode !== 'client') this.net.broadcast('players', this.serializePlayers()); }
+  broadcastStats() { if (this.mode !== 'client') { this.net.broadcast('stats', this.shared); } this.refreshInventoryUI(); }
+  broadcastTile(i) { if (this.mode !== 'client') this.net.broadcast('tile', this.world.tileState(i)); }
+
+  // ---- Verktyg / handlingar -------------------------------------------
+  selectTool(i) { this.tool = i; this.ui.setActiveTool(i); if (TOOLS[i].key === 'seed') this.ui.refreshSeedPicker(this.shared); }
+
+  targetTile() {
+    const p = this.me(); if (!p) return null;
+    const [dx, dy] = DIR_DELTA[p.dir];
+    return { x: Math.floor(p.x) + dx, y: Math.floor(p.y) + dy };
+  }
+
+  doAction() {
+    const p = this.me(); if (!p) return;
+    const tool = TOOLS[this.tool];
+    // spela animation lokalt direkt (prediktion)
+    p.actSheet = tool.anim; p.actUntil = this.now + 0.5; p.animT = 0;
+
+    if (tool.key === 'hand') { this.tryCollect(); return; }
+    const tgt = this.targetTile();
+    if (!tgt) return;
+    const kind = tool.key === 'seed' ? 'plant' : tool.key === 'hoe' ? 'till' : tool.key === 'water' ? 'water' : 'harvest';
+    const payload = { k: kind, tx: tgt.x, ty: tgt.y };
+    if (kind === 'plant') payload.crop = this.selectedSeed;
+    if (this.mode === 'client') this.net.send('do', payload);
+    else this.applyDo(this.myId, payload);
+  }
+
+  tryCollect() {
+    const p = this.me(); if (!p) return;
+    let best = null, bd = 1.6;
+    for (const a of this.animals) {
+      const d = Math.hypot(a.x - p.x, a.y - p.y);
+      if (a.ready && d < bd) { bd = d; best = a; }
+    }
+    if (!best) return;
+    if (this.mode === 'client') this.net.send('do', { k: 'collect', id: best.id });
+    else this.applyDo(this.myId, { k: 'collect', id: best.id });
+  }
+
+  // HOST-sidan (även solo): utför en handling och sänder deltan
+  applyDo(fromId, d) {
+    if (this.mode === 'client') return; // säkerhet
+    const actor = this.players.get(fromId);
+    const nm = actor ? actor.name : 'Någon';
+    // ge fjärrspelaren en synlig animation
+    if (actor && d.k) {
+      const map = { till: 'hoe', water: 'water', plant: 'water', harvest: 'scythe' };
+      if (map[d.k]) { actor.actSheet = map[d.k]; actor.actUntil = this.now + 0.5; }
+    }
+    if (d.k === 'till') {
+      if (this.world.till(d.tx, d.ty)) this.broadcastTile(this.world.idx(d.tx, d.ty));
+    } else if (d.k === 'water') {
+      if (this.world.water(d.tx, d.ty)) this.broadcastTile(this.world.idx(d.tx, d.ty));
+    } else if (d.k === 'plant') {
+      const crop = d.crop;
+      if ((this.shared.seeds[crop] || 0) <= 0) { this.notify(fromId, 'Slut på ' + CROPS[crop].name + '-frön!'); return; }
+      if (this.world.plant(d.tx, d.ty, crop)) {
+        this.shared.seeds[crop]--; this.broadcastTile(this.world.idx(d.tx, d.ty)); this.broadcastStats();
+      }
+    } else if (d.k === 'harvest') {
+      const res = this.world.harvest(d.tx, d.ty);
+      if (res) {
+        this.shared.produce[res.type] = (this.shared.produce[res.type] || 0) + res.n;
+        this.broadcastTile(this.world.idx(d.tx, d.ty)); this.broadcastStats();
+        this.announce(`${nm} skördade ${res.n} ${CROPS[res.type].name.toLowerCase()} ${CROPS[res.type].emoji}`);
+      }
+    } else if (d.k === 'collect') {
+      const a = this.animals.find((x) => x.id === d.id);
+      if (a && a.ready) {
+        a.ready = false; a.timer = 0;
+        const gain = a.type === 'cow' ? 8 : 3;
+        this.shared.coins += gain;
+        this.broadcastStats();
+        this.announce(`${nm} samlade ${a.type === 'cow' ? 'mjölk 🥛' : 'ägg 🥚'} (+${gain} 🪙)`);
+      }
+    } else if (d.k === 'buy') {
+      this.buyImpl(fromId, d.crop);
+    } else if (d.k === 'sell') {
+      this.sellImpl(fromId);
+    }
+  }
+
+  buyImpl(fromId, crop) {
+    const c = CROPS[crop]; if (!c) return;
+    if (this.shared.coins < c.seed) { this.notify(fromId, 'För lite mynt!'); return; }
+    this.shared.coins -= c.seed; this.shared.seeds[crop] = (this.shared.seeds[crop] || 0) + 1;
+    this.broadcastStats();
+    this.ui.refreshShop(this.shared, (k) => this.doBuy(k));
+  }
+  sellImpl(fromId) {
+    let total = 0;
+    for (const k of CROP_KEYS) { const n = this.shared.produce[k] || 0; total += n * CROPS[k].sell; this.shared.produce[k] = 0; }
+    if (total <= 0) { this.notify(fromId, 'Inget att sälja.'); return; }
+    this.shared.coins += total;
+    this.broadcastStats();
+    const actor = this.players.get(fromId);
+    this.announce(`${actor ? actor.name : 'Någon'} skeppade skörd för ${total} 🪙`);
+    this.ui.refreshSell(this.shared);
+  }
+
+  // Klientinitierad butik/sälj → route till host
+  doBuy(crop) {
+    if (this.mode === 'client') this.net.send('do', { k: 'buy', crop });
+    else this.buyImpl(this.myId, crop);
+  }
+  doSell() {
+    if (this.mode === 'client') this.net.send('do', { k: 'sell' });
+    else this.sellImpl(this.myId);
+  }
+
+  notify(id, text) { if (id === this.myId) this.ui.toast(text); else this.net.sendTo(id, 'toast', { text }); }
+  announce(text) { this.ui.toast(text); if (this.mode !== 'client') this.net.broadcast('toast', { text }); }
+
+  refreshInventoryUI() {
+    this.ui.hud({ coins: this.shared.coins, day: this.shared.day, time: this.shared.time, players: this.players.size });
+    this.ui.refreshSeedPicker(this.shared);
+    this.ui.refreshShop(this.shared, (k) => this.doBuy(k));
+    this.ui.refreshSell(this.shared);
+  }
+
+  // ---- Djur ------------------------------------------------------------
+  spawnAnimals() {
+    this.animals = [];
+    const pen = this.world.pen; let n = 0;
+    const mk = (type, iv) => {
+      const x = pen.x + 1 + Math.random() * (pen.w - 2);
+      const y = pen.y + 1 + Math.random() * (pen.h - 2);
+      this.animals.push({ id: 'a' + (n++), type, x, y, dir: DIR.DOWN, mv: false, ready: false, timer: Math.random() * iv, iv, tx: x, ty: y, wait: 0, frame: 0 });
+    };
+    for (let i = 0; i < 3; i++) mk('chicken', 26);
+    for (let i = 0; i < 2; i++) mk('cow', 46);
+  }
+  updateAnimals(dt) {
+    const pen = this.world.pen;
+    for (const a of this.animals) {
+      a.timer += dt;
+      if (!a.ready && a.timer >= a.iv) a.ready = true;
+      // vandra inom hagen
+      a.wait -= dt;
+      if (a.wait <= 0) {
+        a.tx = pen.x + 1 + Math.random() * (pen.w - 2);
+        a.ty = pen.y + 1 + Math.random() * (pen.h - 2);
+        a.wait = 2 + Math.random() * 3;
+      }
+      const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
+      if (d > 0.06) {
+        const sp = (a.type === 'cow' ? 0.8 : 1.2) * dt;
+        a.x += (dx / d) * Math.min(sp, d); a.y += (dy / d) * Math.min(sp, d);
+        a.mv = true;
+        a.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? DIR.RIGHT : DIR.LEFT) : (dy > 0 ? DIR.DOWN : DIR.UP);
+      } else a.mv = false;
+    }
+  }
+
+  // ---- Loop ------------------------------------------------------------
+  loop(t) {
+    const dt = Math.min(0.05, (t - this.last) / 1000);
+    this.last = t; this.now += dt;
+    this.update(dt);
+    this.render();
+    requestAnimationFrame((tt) => this.loop(tt));
+  }
+
+  update(dt) {
+    const me = this.me();
+    if (me) this.moveLocal(me, dt);
+    // uppdatera animationer för alla spelare
+    for (const p of this.players.values()) this.updateAnim(p, dt);
+
+    if (this.mode !== 'client') {
+      // host/solo: värld, djur, tid
+      const changed = this.world.tick(dt);
+      for (const i of changed) this.broadcastTile(i);
+      this.updateAnimals(dt);
+      const prevDay = this.shared.day;
+      this.shared.time += dt * (24 / DAY_LEN);
+      if (this.shared.time >= 24) { this.shared.time -= 24; this.shared.day++; }
+      if (this.shared.day !== prevDay) this.announce('☀️ En ny dag på gården! (Dag ' + this.shared.day + ')');
+    }
+
+    // nätverkstakt
+    if (this.mode === 'host') {
+      this._acc.players += dt; this._acc.animals += dt; this._acc.stats += dt;
+      if (this._acc.players > 0.08) { this._acc.players = 0; this.broadcastPlayers(); }
+      if (this._acc.animals > 0.3) { this._acc.animals = 0; this.net.broadcast('animals', this.animals); }
+      if (this._acc.stats > 1) { this._acc.stats = 0; this.net.broadcast('stats', this.shared); }
+    } else if (this.mode === 'client') {
+      this._acc.pos += dt;
+      if (this._acc.pos > 0.066 && me) {
+        this._acc.pos = 0;
+        this.net.send('pos', { x: me.x, y: me.y, dir: me.dir, mv: me.mv });
+      }
+    }
+    // HUD-klocka
+    this.ui.hud({ coins: this.shared.coins, day: this.shared.day, time: this.shared.time, players: this.players.size });
+    this.updateActionLabel();
+  }
+
+  moveLocal(p, dt) {
+    const mv = this.input.getMove();
+    let nx = p.x, ny = p.y;
+    const step = SPEED * dt;
+    p.mv = Math.abs(mv.x) > 0.01 || Math.abs(mv.y) > 0.01;
+    if (p.mv) {
+      // riktning
+      p.dir = Math.abs(mv.x) > Math.abs(mv.y) ? (mv.x > 0 ? DIR.RIGHT : DIR.LEFT) : (mv.y > 0 ? DIR.DOWN : DIR.UP);
+      const tx = p.x + mv.x * step, ty = p.y + mv.y * step;
+      if (!this.blocked(tx, p.y)) nx = tx;
+      if (!this.blocked(nx, ty)) ny = ty;
+      p.x = Math.max(0.4, Math.min(this.world.w - 0.4, nx));
+      p.y = Math.max(0.4, Math.min(this.world.h - 0.4, ny));
+    }
+  }
+  blocked(px, py) {
+    const r = 0.30;
+    const pts = [[px - r, py - r], [px + r, py - r], [px - r, py + r], [px + r, py + r], [px, py + r]];
+    for (const [ux, uy] of pts) if (this.world.isSolid(Math.floor(ux), Math.floor(uy))) return true;
+    return false;
+  }
+
+  updateAnim(p, dt) {
+    p.animT += dt;
+    let sheet;
+    if (this.now < p.actUntil && p.actSheet) sheet = p.actSheet;
+    else sheet = p.mv ? 'run' : 'idle';
+    if (sheet !== p.sheet) { p.sheet = sheet; p.animT = 0; }
+    const meta = SHEETS[sheet] || SHEETS.idle;
+    p.frame = Math.floor(p.animT * meta.fps) % meta.frames;
+  }
+
+  updateActionLabel() {
+    const tool = TOOLS[this.tool];
+    let lbl = tool.label;
+    if (tool.key !== 'hand') {
+      const tgt = this.targetTile();
+      if (tgt) {
+        const tt = this.world.get(tgt.x, tgt.y);
+        if (tool.key === 'hoe') lbl = tt === T.GRASS || tt === T.FLOWER ? 'Luckra jord' : 'Hacka';
+        else if (tool.key === 'water') lbl = 'Vattna';
+        else if (tool.key === 'seed') lbl = 'Så ' + CROPS[this.selectedSeed].name;
+        else if (tool.key === 'harvest') lbl = 'Skörda';
+      }
+    }
+    this.ui.actionLabel(lbl);
+  }
+
+  // ---- Render ----------------------------------------------------------
+  resize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = window.innerWidth, h = window.innerHeight;
+    this.canvas.width = w * dpr; this.canvas.height = h * dpr;
+    this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px';
+    this.dpr = dpr; this.vw = w; this.vh = h;
+    this.scale = Math.max(2, Math.min(4, Math.round(Math.min(w, h) / (TILE * 13))));
+  }
+
+  render() {
+    const ctx = this.ctx;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    const S = TILE * this.scale;
+    const me = this.me();
+    if (!me) return;
+    // kamera
+    const mapPxW = this.world.w * S, mapPxH = this.world.h * S;
+    this.cam.x = Math.max(0, Math.min(mapPxW - this.vw, me.x * S - this.vw / 2));
+    this.cam.y = Math.max(0, Math.min(mapPxH - this.vh, me.y * S - this.vh / 2));
+    if (mapPxW < this.vw) this.cam.x = (mapPxW - this.vw) / 2;
+    if (mapPxH < this.vh) this.cam.y = (mapPxH - this.vh) / 2;
+
+    ctx.fillStyle = '#7fbf47';
+    ctx.fillRect(0, 0, this.vw, this.vh);
+
+    // bakat marklager
+    const bake = this.world.getBake(this.scale);
+    const sx = Math.max(0, this.cam.x), sy = Math.max(0, this.cam.y);
+    const sw = Math.min(this.vw, bake.width - sx), sh = Math.min(this.vh, bake.height - sy);
+    ctx.drawImage(bake, sx, sy, sw, sh, sx - this.cam.x, sy - this.cam.y, sw, sh);
+
+    // dynamiska rutor (jord + grödor)
+    const c0 = Math.max(0, Math.floor(this.cam.x / S) - 1), c1 = Math.min(this.world.w - 1, Math.floor((this.cam.x + this.vw) / S) + 1);
+    const r0 = Math.max(0, Math.floor(this.cam.y / S) - 1), r1 = Math.min(this.world.h - 1, Math.floor((this.cam.y + this.vh) / S) + 1);
+    for (let ty = r0; ty <= r1; ty++)
+      for (let tx = c0; tx <= c1; tx++)
+        this.world.drawPlot(ctx, tx, ty, tx * S - this.cam.x, ty * S - this.cam.y, S);
+
+    // markera målruta för lokala spelaren
+    const tgt = this.targetTile();
+    if (tgt && this.world.inBounds(tgt.x, tgt.y)) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2;
+      ctx.strokeRect(tgt.x * S - this.cam.x + 2, tgt.y * S - this.cam.y + 2, S - 4, S - 4);
+    }
+
+    // depth-sorterade entiteter: props + djur + spelare
+    const ents = [];
+    const chest = this.world.chest, shop = this.world.shop;
+    ents.push({ y: chest.y * S, draw: () => this.drawChest(ctx, chest.x * S - this.cam.x, chest.y * S - this.cam.y, S) });
+    ents.push({ y: shop.y * S, draw: () => this.drawSign(ctx, shop.x * S - this.cam.x, shop.y * S - this.cam.y, S) });
+    for (const a of this.animals) ents.push({ y: a.y * S, draw: () => this.drawAnimal(ctx, a, S) });
+    for (const p of this.players.values()) ents.push({ y: p.y * S, draw: () => this.drawPlayer(ctx, p, S) });
+    ents.sort((a, b) => a.y - b.y);
+    for (const e of ents) e.draw();
+
+    // natt-tint
+    this.drawNight(ctx);
+    // joystick
+    this.input.drawJoystick(ctx);
+  }
+
+  drawPlayer(ctx, p, S) {
+    const cx = p.x * S - this.cam.x, footY = p.y * S - this.cam.y + S * 0.35;
+    drawShadow(ctx, this.assets.shadow, cx, footY, this.scale);
+    // färgring runt fötter för att skilja spelare åt
+    ctx.strokeStyle = p.color; ctx.lineWidth = Math.max(2, this.scale);
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.ellipse(cx, footY, S * 0.34, S * 0.16, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+    const img = this.assets.img[p.sheet] || this.assets.img.idle;
+    drawActor(ctx, img, p.frame, p.dir, cx, footY, this.scale);
+    // namnskylt
+    this.drawNameTag(ctx, p.name, p.color, cx, footY - S * 1.5);
+  }
+
+  drawAnimal(ctx, a, S) {
+    const cx = a.x * S - this.cam.x, footY = a.y * S - this.cam.y + S * 0.3;
+    drawShadow(ctx, this.assets.shadow, cx, footY, this.scale, 0.8);
+    const meta = SHEETS[a.type];
+    const frame = Math.floor(this.now * meta.fps) % meta.frames;
+    drawActor(ctx, this.assets.img[a.type], frame, a.dir, cx, footY, this.scale * 0.85);
+    if (a.ready) {
+      // liten bubbla med produkt
+      const bx = cx, by = footY - S * 1.15;
+      ctx.font = `${Math.round(S * 0.7)}px serif`; ctx.textAlign = 'center';
+      ctx.fillText(a.type === 'cow' ? '🥛' : '🥚', bx, by);
+    }
+  }
+
+  drawNameTag(ctx, name, color, cx, y) {
+    ctx.font = `bold ${Math.round(10 + this.scale * 2)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    const w = ctx.measureText(name).width + 12;
+    ctx.fillStyle = 'rgba(20,20,30,0.6)';
+    ctx.fillRect(cx - w / 2, y - 14, w, 18);
+    ctx.fillStyle = color; ctx.fillRect(cx - w / 2, y + 3, w, 2);
+    ctx.fillStyle = '#fff'; ctx.fillText(name, cx, y);
+  }
+
+  drawChest(ctx, px, py, S) {
+    ctx.fillStyle = '#8a5a34'; ctx.fillRect(px + S * 0.1, py + S * 0.25, S * 0.8, S * 0.6);
+    ctx.fillStyle = '#a9713f'; ctx.fillRect(px + S * 0.1, py + S * 0.25, S * 0.8, S * 0.2);
+    ctx.fillStyle = '#ffd76a'; ctx.fillRect(px + S * 0.45, py + S * 0.42, S * 0.1, S * 0.14);
+    ctx.font = `${Math.round(S * 0.5)}px serif`; ctx.textAlign = 'center';
+    ctx.fillText('📦', px + S * 0.5, py + S * 0.2);
+  }
+  drawSign(ctx, px, py, S) {
+    ctx.fillStyle = '#8a5a34'; ctx.fillRect(px + S * 0.45, py + S * 0.4, S * 0.1, S * 0.5);
+    ctx.fillStyle = '#c98f4f'; ctx.fillRect(px + S * 0.15, py + S * 0.15, S * 0.7, S * 0.4);
+    ctx.font = `${Math.round(S * 0.34)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🛒', px + S * 0.5, py + S * 0.36);
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  drawNight(ctx) {
+    const t = this.shared.time;
+    let dark = 0;
+    if (t >= 20) dark = (t - 20) / 4;         // 20→24 mörknar
+    else if (t < 6) dark = 1;                 // natt
+    else if (t < 8) dark = (8 - t) / 2;       // 6→8 ljusnar
+    dark = Math.max(0, Math.min(0.5, dark * 0.5));
+    if (dark > 0.01) { ctx.fillStyle = `rgba(20,26,70,${dark})`; ctx.fillRect(0, 0, this.vw, this.vh); }
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const g = new Game();
+  g.boot();
+  window.__game = g;
+});

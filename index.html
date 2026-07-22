@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f7c6d9">
+<title>Drömgården 🌷 — familjens gård</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌷</text></svg>">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --pink: #ff85ac; --pink-d: #e5678f; --cream: #fff4e6; --ink: #4a3a44;
+    --green: #7ec850; --panel: rgba(255,248,240,0.95);
+  }
+  html, body {
+    height: 100%; overflow: hidden; position: fixed; width: 100%;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #86c04c; color: var(--ink); user-select: none; -webkit-user-select: none;
+    touch-action: none;
+  }
+  .hidden { display: none !important; }
+  #canvas { position: absolute; inset: 0; display: block; image-rendering: pixelated; }
+
+  /* ---------- Startmeny ---------- */
+  #menu {
+    position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; padding: 24px;
+    background: radial-gradient(circle at 50% 30%, #ffe3ee 0%, #ffd0e0 45%, #bfe89a 100%);
+    text-align: center;
+  }
+  #menu h1 { font-size: clamp(34px, 9vw, 58px); color: var(--pink-d); text-shadow: 2px 3px 0 #fff, 4px 6px 0 rgba(0,0,0,0.08); letter-spacing: 1px; }
+  #menu .sub { color: #7a5c68; font-size: clamp(14px,4vw,18px); margin-top: -6px; max-width: 420px; }
+  .card { background: var(--panel); border-radius: 22px; padding: 20px; width: min(94vw, 420px); box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+  .card h2 { font-size: 15px; color: var(--pink-d); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  input {
+    width: 100%; padding: 14px 16px; border: 3px solid #ffd0e0; border-radius: 14px;
+    font-size: 17px; color: var(--ink); background: #fff; outline: none; margin-bottom: 10px; text-align: center;
+  }
+  input:focus { border-color: var(--pink); }
+  button {
+    font-family: inherit; cursor: pointer; border: none; font-weight: 700; color: #fff;
+    touch-action: manipulation;
+  }
+  .btn {
+    width: 100%; padding: 15px; border-radius: 14px; font-size: 18px; margin-bottom: 10px;
+    background: linear-gradient(180deg, var(--pink), var(--pink-d)); box-shadow: 0 4px 0 #c14f75;
+    transition: transform .06s;
+  }
+  .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #c14f75; }
+  .btn.green { background: linear-gradient(180deg, #8fd35b, #5fa838); box-shadow: 0 4px 0 #4a8a2c; }
+  .btn.blue { background: linear-gradient(180deg, #6cc4f0, #3d97d0); box-shadow: 0 4px 0 #2f79ad; }
+  .row { display: flex; gap: 8px; }
+  .row input { margin-bottom: 0; }
+  .row .btn { margin-bottom: 0; white-space: nowrap; width: auto; padding-left: 18px; padding-right: 18px; }
+  #menuMsg { color: var(--pink-d); font-size: 14px; min-height: 18px; font-weight: 600; }
+  .hint { font-size: 12px; color: #8a6b76; margin-top: 6px; }
+
+  /* ---------- HUD ---------- */
+  #game { position: absolute; inset: 0; z-index: 10; }
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+    padding: max(8px, env(safe-area-inset-top)) 10px 8px; pointer-events: none;
+  }
+  .hudgroup { display: flex; gap: 6px; flex-wrap: wrap; pointer-events: auto; }
+  .pill {
+    background: var(--panel); border-radius: 999px; padding: 7px 13px; font-weight: 700;
+    font-size: 15px; color: var(--ink); box-shadow: 0 3px 8px rgba(0,0,0,0.15); white-space: nowrap;
+  }
+  #roomCode.link { cursor: pointer; color: var(--pink-d); }
+  .iconbtn {
+    background: var(--panel); border-radius: 999px; padding: 8px 12px; font-size: 16px; font-weight: 700;
+    color: var(--ink); box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  }
+  .iconbtn:active { transform: scale(0.94); }
+
+  /* ---------- Verktygsrad + action ---------- */
+  #seedPicker {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; z-index: 20;
+    display: flex; gap: 6px; background: var(--panel); padding: 6px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+  .seed {
+    position: relative; width: 46px; height: 46px; border-radius: 12px; background: #ffe9f1; font-size: 24px;
+    display: flex; align-items: center; justify-content: center; color: var(--ink);
+  }
+  .seed.active { background: var(--pink); box-shadow: 0 0 0 3px #fff inset; }
+  .seed.empty { opacity: 0.45; }
+  .seed .cnt { position: absolute; bottom: -2px; right: 2px; font-size: 12px; font-weight: 800; color: var(--pink-d); background: #fff; border-radius: 8px; padding: 0 4px; }
+
+  #toolbar {
+    position: absolute; left: 10px; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 20;
+    display: flex; gap: 6px; background: var(--panel); padding: 7px; border-radius: 18px; box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+  }
+  .tool {
+    width: 54px; height: 58px; border-radius: 13px; background: #fff0e6; color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  }
+  .tool .e { font-size: 22px; }
+  .tool .l { font-size: 10px; font-weight: 700; }
+  .tool.active { background: linear-gradient(180deg,#ffd36a,#ffb638); box-shadow: 0 0 0 3px #fff inset; }
+  .tool:active { transform: scale(0.95); }
+
+  #actionBtn {
+    position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(24px, env(safe-area-inset-bottom));
+    z-index: 20; width: 108px; height: 108px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #8fe06a, #4fa62f);
+    box-shadow: 0 6px 0 #3c8225, 0 8px 18px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    font-size: 15px; font-weight: 800; text-shadow: 0 1px 2px rgba(0,0,0,0.3); text-align: center; line-height: 1.1;
+  }
+  #actionBtn:active { transform: translateY(3px); box-shadow: 0 3px 0 #3c8225, 0 5px 12px rgba(0,0,0,0.3); }
+  #actionBtn .txt { padding: 0 6px; }
+
+  /* ---------- Modaler ---------- */
+  .modal {
+    position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+    background: rgba(30,20,30,0.5); padding: 16px;
+  }
+  .sheet { background: var(--cream); border-radius: 22px; width: min(94vw, 460px); max-height: 82vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 16px 40px rgba(0,0,0,0.35); }
+  .sheet header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; background: linear-gradient(180deg,var(--pink),var(--pink-d)); color: #fff; }
+  .sheet header h2 { font-size: 20px; }
+  .close { background: rgba(255,255,255,0.25); width: 34px; height: 34px; border-radius: 50%; font-size: 20px; color: #fff; }
+  .list { padding: 12px 16px; overflow-y: auto; }
+  .shopRow { display: grid; grid-template-columns: 30px 1fr auto auto auto; gap: 8px; align-items: center; padding: 9px 4px; border-bottom: 1px dashed #f0d9c4; font-size: 15px; }
+  .shopRow .ico { font-size: 22px; }
+  .shopRow .nm { font-weight: 700; }
+  .shopRow .pr { color: #b06; font-weight: 700; }
+  .shopRow .have { font-size: 12px; color: #8a6b76; }
+  .shopRow .buy { background: var(--green); padding: 8px 12px; border-radius: 10px; font-size: 13px; box-shadow: 0 3px 0 #4a8a2c; }
+  .shopRow .buy:disabled { opacity: 0.4; box-shadow: none; }
+  .sheet footer { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 2px solid #f0d9c4; }
+  .sheet footer .big { background: linear-gradient(180deg,#ffd36a,#ffb638); color: #6a4a10; padding: 13px 22px; border-radius: 14px; font-size: 17px; box-shadow: 0 4px 0 #d99a20; }
+  .sheet footer .big:disabled { opacity: 0.4; box-shadow: none; }
+  .total { font-size: 20px; font-weight: 800; color: var(--pink-d); }
+  .muted { color: #8a6b76; text-align: center; padding: 20px; }
+
+  /* ---------- Toast ---------- */
+  #toast { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; width: max-content; max-width: 90vw; }
+  .toastLine { background: rgba(40,28,40,0.9); color: #fff; padding: 9px 16px; border-radius: 14px; font-size: 14px; font-weight: 600; opacity: 0; transform: translateY(-8px); transition: all .3s; text-align: center; }
+  .toastLine.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- SPEL -->
+<div id="game" class="hidden">
+  <canvas id="canvas"></canvas>
+
+  <div id="topbar">
+    <div class="hudgroup">
+      <span class="pill" id="coins">🪙 0</span>
+      <span class="pill" id="clock">Dag 1 · 06:00</span>
+      <span class="pill" id="roomCode"></span>
+    </div>
+    <div class="hudgroup">
+      <span class="pill" id="players">👥 1</span>
+      <button class="iconbtn" id="btnShop">🛒 Butik</button>
+      <button class="iconbtn" id="btnSell">📦 Sälj</button>
+    </div>
+  </div>
+
+  <div id="seedPicker" class="hidden"></div>
+  <div id="toolbar"></div>
+  <button id="actionBtn"><span class="txt">Gör</span></button>
+
+  <div id="toast"></div>
+</div>
+
+<!-- STARTMENY -->
+<div id="menu">
+  <h1>Drömgården</h1>
+  <p class="sub">En mysig gård för hela familjen 🌷 Odla, sköt djuren och driv gården tillsammans.</p>
+  <div class="card">
+    <h2>Ditt namn</h2>
+    <input id="nameInput" maxlength="12" placeholder="t.ex. Ella" autocomplete="off">
+    <button class="btn green" id="btnSolo">🌱 Spela själv</button>
+    <button class="btn" id="btnHost">🏡 Skapa gård (bjud in familjen)</button>
+    <div class="row">
+      <input id="joinCode" maxlength="4" placeholder="KOD" autocomplete="off" style="text-transform:uppercase">
+      <button class="btn blue" id="btnJoin">Gå med</button>
+    </div>
+    <p id="menuMsg"></p>
+    <p class="hint">Skapa en gård och dela 4-teckens-koden — familjen ansluter från sina mobiler.</p>
+  </div>
+</div>
+
+<!-- BUTIK -->
+<div id="shopModal" class="modal hidden">
+  <div class="sheet">
+    <header><h2>🛒 Fröbutik</h2><button class="close" id="shopClose">✕</button></header>
+    <div class="list" id="shopList"></div>
+    <footer><span>Kassa:</span><span class="total" id="shopCoins">🪙 0</span></footer>
+  </div>
+</div>
+
+<!-- SÄLJ -->
+<div id="sellModal" class="modal hidden">
+  <div class="sheet">
+    <header><h2>📦 Skeppa skörd</h2><button class="close" id="sellClose">✕</button></header>
+    <div class="list" id="sellList"></div>
+    <footer>
+      <span class="total" id="sellTotal">🪙 0</span>
+      <button class="big" id="sellAll">Sälj allt</button>
+    </footer>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="module" src="js/game.js"></script>
+</body>
+</html>

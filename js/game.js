@@ -1,9 +1,10 @@
 // DRÖMGÅRDEN — huvudlogik: spelare, djur, verktyg, rendering, spelloop och nät-glue.
-import { World, TILE, T, CROPS, CROP_KEYS } from './world.js';
+import { World, TILE, CROPS, CROP_KEYS } from './world.js';
 import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js';
 import { Net } from './net.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
+import { Editor } from './editor.js';
 
 const SPEED = 4.4;
 const DAY_LEN = 480;
@@ -61,20 +62,39 @@ class Game {
     document.getElementById('roomCode').onclick = () => {
       if (this.mode === 'host' && this.net.code) navigator.clipboard?.writeText(this.net.code).then(() => this.ui.toast('Kod kopierad: ' + this.net.code));
     };
+    // Kartbyggare
+    this.editor = new Editor(this);
+    this.ui.initMaps({
+      onEditor: () => this.editor.open(null),
+      onEditMap: (name) => this.editor.open(name),
+      onPlayMap: (name, mode) => { this.pendingMap = this.editor.loadSaved(name); this.start(mode); },
+      listMaps: () => this.editor.listSaved(),
+    });
     this.ui.showMenu();
+  }
+
+  buildWorld() {
+    if (this.pendingMap) { this.world.load(this.pendingMap); this.pendingMap = null; }
+    else this.world.generate();
+    this.spawnAnimals();
   }
 
   // ---- Start / nät -----------------------------------------------------
   start(mode) {
     const name = this.ui.name();
+    // vald karta i menyn (om ingen redan satt av editorn)
+    if (!this.pendingMap && (mode === 'solo' || mode === 'host')) {
+      const mn = this.ui.selectedMap();
+      if (mn) this.pendingMap = this.editor.loadSaved(mn);
+    }
     if (mode === 'solo') {
       this.mode = 'solo'; this.myId = 'host';
-      this.world.generate(); this.spawnAnimals();
+      this.buildWorld();
       this.addPlayer('host', name, this.nextColor(), this.world.spawn.x + 0.5, this.world.spawn.y + 0.5);
       this.ui.setRoomCode(null, 'solo'); this.begin();
     } else if (mode === 'host') {
       this.mode = 'host'; this.myId = 'host';
-      this.world.generate(); this.spawnAnimals();
+      this.buildWorld();
       this.addPlayer('host', name, this.nextColor(), this.world.spawn.x + 0.5, this.world.spawn.y + 0.5);
       this.ui.menuMsg('Skapar rum…');
       this.net.on({
@@ -154,7 +174,7 @@ class Game {
       }
       const ids = new Set(d.map((s) => s.id));
       for (const id of [...this.players.keys()]) if (id !== this.myId && !ids.has(id)) this.players.delete(id);
-    } else if (t === 'tile') { this.world.applyTile(d); }
+    } else if (t === 'tile') { this.world.applyPlot(d); }
     else if (t === 'animals') { this.animals = d; }
     else if (t === 'stats') { this.shared = d; this.refreshInventoryUI(); }
     else if (t === 'toast') { this.ui.toast(d.text); }
@@ -168,7 +188,7 @@ class Game {
   }
   broadcastPlayers() { if (this.mode !== 'client') this.net.broadcast('players', this.serializePlayers()); }
   broadcastStats() { if (this.mode !== 'client') this.net.broadcast('stats', this.shared); this.refreshInventoryUI(); }
-  broadcastTile(i) { if (this.mode !== 'client') this.net.broadcast('tile', this.world.tileState(i)); }
+  broadcastTile(i) { if (this.mode !== 'client') this.net.broadcast('tile', this.world.plotState(i)); }
 
   // ---- Verktyg / handlingar -------------------------------------------
   selectTool(i) { this.tool = i; this.ui.setActiveTool(i); if (TOOLS[i].key === 'seed') this.ui.refreshSeedPicker(this.shared); }
@@ -246,26 +266,25 @@ class Game {
     this.ui.refreshSell(this.shared);
   }
 
-  // ---- Djur ------------------------------------------------------------
+  // ---- Djur (spawnas från kartans animalSpawns, vandrar runt sitt hem) --
   spawnAnimals() {
-    this.animals = []; const pen = this.world.pen; let n = 0;
-    const mk = (type, iv) => {
-      const x = pen.x + 1 + Math.random() * (pen.w - 2), y = pen.y + 1 + Math.random() * (pen.h - 2);
-      this.animals.push({ id: 'a' + (n++), type, x, y, dir: DIR.DOWN, mv: false, ready: false, timer: Math.max(0, iv - (6 + Math.random() * 6)), iv, tx: x, ty: y, wait: 0 });
-    };
-    for (let i = 0; i < 3; i++) mk('chicken', 18);
-    for (let i = 0; i < 2; i++) mk('cow', 30);
+    this.animals = []; let n = 0;
+    for (const sp of this.world.animalSpawns) {
+      const iv = sp.type === 'cow' ? 30 : 18;
+      this.animals.push({ id: 'a' + (n++), type: sp.type, x: sp.x, y: sp.y, home: { x: sp.x, y: sp.y }, dir: DIR.DOWN, mv: false, ready: false, timer: Math.max(0, iv - (6 + Math.random() * 6)), iv, tx: sp.x, ty: sp.y, wait: 0 });
+    }
   }
   updateAnimals(dt) {
-    const pen = this.world.pen;
     for (const a of this.animals) {
       a.timer += dt; if (!a.ready && a.timer >= a.iv) a.ready = true;
       a.wait -= dt;
-      if (a.wait <= 0) { a.tx = pen.x + 1 + Math.random() * (pen.w - 2); a.ty = pen.y + 1 + Math.random() * (pen.h - 2); a.wait = 2 + Math.random() * 3; }
+      if (a.wait <= 0) { a.tx = a.home.x + (Math.random() * 5 - 2.5); a.ty = a.home.y + (Math.random() * 5 - 2.5); a.wait = 2 + Math.random() * 3; }
       const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
       if (d > 0.06) {
         const sp = (a.type === 'cow' ? 0.7 : 1.1) * dt;
-        a.x += (dx / d) * Math.min(sp, d); a.y += (dy / d) * Math.min(sp, d); a.mv = true;
+        const nx = a.x + (dx / d) * Math.min(sp, d), ny = a.y + (dy / d) * Math.min(sp, d);
+        if (!this.world.isSolid(Math.floor(nx), Math.floor(ny))) { a.x = nx; a.y = ny; a.mv = true; }
+        else { a.wait = 0; a.mv = false; }
         a.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? DIR.RIGHT : DIR.LEFT) : (dy > 0 ? DIR.DOWN : DIR.UP);
       } else a.mv = false;
     }
@@ -383,15 +402,13 @@ class Game {
 
     // depth-sorterade objekt + entiteter
     const ents = [];
-    const h = this.world.house;
-    ents.push({ y: (h.y + h.h) * S, draw: () => this.world.drawHouse(ctx, this.cam.x, this.cam.y, S) });
-    for (const tr of this.world.trees) {
-      if (tr.x < c0 - 1 || tr.x > c1 + 1 || tr.y < r0 - 1 || tr.y > r1 + 2) continue;
-      ents.push({ y: (tr.y + 1) * S, draw: () => this.world.drawTree(ctx, tr.x, tr.y, this.cam.x, this.cam.y, S) });
+    for (const o of this.world.objects) {
+      if (o.tx > c1 + 1 || o.tx + o.fw < c0 - 1 || o.ty > r1 + 2 || o.ty + o.fh < r0 - 6) continue;
+      ents.push({ y: this.world.objFootY(o, S), draw: () => this.world.drawObject(ctx, o, this.cam.x, this.cam.y, S) });
     }
     const ch = this.world.chest, sh2 = this.world.shop;
-    ents.push({ y: ch.y * S + 1, draw: () => { this.world.drawCrate(ctx, ch.x * S - this.cam.x, ch.y * S - this.cam.y, S); this.emojiTag(ctx, '📦', ch.x * S - this.cam.x + S / 2, ch.y * S - this.cam.y - 2, S); } });
-    ents.push({ y: sh2.y * S + 1, draw: () => { this.world.drawCrate(ctx, sh2.x * S - this.cam.x, sh2.y * S - this.cam.y, S); this.emojiTag(ctx, '🛒', sh2.x * S - this.cam.x + S / 2, sh2.y * S - this.cam.y - 2, S); } });
+    if (ch) ents.push({ y: ch.y * S + 1, draw: () => { this.world.drawCrate(ctx, ch.x * S - this.cam.x, ch.y * S - this.cam.y, S); this.emojiTag(ctx, '📦', ch.x * S - this.cam.x + S / 2, ch.y * S - this.cam.y - 2, S); } });
+    if (sh2) ents.push({ y: sh2.y * S + 1, draw: () => { this.world.drawCrate(ctx, sh2.x * S - this.cam.x, sh2.y * S - this.cam.y, S); this.emojiTag(ctx, '🛒', sh2.x * S - this.cam.x + S / 2, sh2.y * S - this.cam.y - 2, S); } });
     for (const a of this.animals) ents.push({ y: a.y * S, draw: () => this.drawAnimal(ctx, a, S) });
     for (const p of this.players.values()) ents.push({ y: p.y * S, draw: () => this.drawPlayer(ctx, p, S) });
     ents.sort((a, b) => a.y - b.y);

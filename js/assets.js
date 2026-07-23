@@ -19,12 +19,30 @@ export const ANIM = {
 
 const SOURCES = {
   farmer: 'assets/farmer.png',
-  tiles: 'assets/farm_tiles.png',
-  plants: 'assets/plants.png',
-  objects: 'assets/farm_objects.png',
   chicken: 'assets/chicken.png',
   cow: 'assets/cow.png',
   shadow: 'assets/shadow.png',
+  // tileset-ark (används av kartan + palett)
+  farm_tiles: 'assets/farm_tiles.png',
+  farm_objects: 'assets/farm_objects.png',
+  plants: 'assets/plants.png',
+  farm_items: 'assets/farm_items.png',
+  farm_furniture: 'assets/farm_furniture.png',
+  farm_bridges: 'assets/farm_bridges.png',
+  farm_inside: 'assets/farm_inside.png',
+  forest_spring: 'assets/forest_spring.png',
+  forest_summer: 'assets/forest_summer.png',
+  forest_autumn: 'assets/forest_autumn.png',
+  forest_winter: 'assets/forest_winter.png',
+  forest_bridges: 'assets/forest_bridges.png',
+  forest_inside: 'assets/forest_inside.png',
+  forest_objects: 'assets/forest_objects.png',
+  forest_items_spring: 'assets/forest_items_spring.png',
+  forest_items_autumn: 'assets/forest_items_autumn.png',
+  forest_items_winter: 'assets/forest_items_winter.png',
+  forest_furniture: 'assets/forest_furniture.png',
+  mushroom_brown: 'assets/mushroom_brown.png',
+  mushroom_blue: 'assets/mushroom_blue.png',
 };
 
 function loadImg(src) {

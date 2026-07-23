@@ -27,6 +27,21 @@ VILDMARKEN). Värdens webbläsare håller den "sanna" gården.
 
 Grödor: 🥕 Morot · 🥔 Potatis · 🥬 Sallad · 🍓 Jordgubbe · 🎃 Pumpa.
 
+## 🎨 Kartbyggare
+
+Tryck **🎨 Bygg egen karta** i menyn för att göra en helt egen gård. Alla sprites
+från Tiny Wonder Farm + Forest finns i paletten (gräs, mark, broar, växter, objekt,
+möbler, årstider, m.m.).
+
+- **🖌️ Måla** — välj en ruta i paletten och måla mark, eller placera träd/hus & djur
+- **🧱 Vägg** — gör en ruta ogenomtränglig · **🌱 Åker** — markera var man får odla
+- **🚩 Start** — sätt var man börjar · **🧽 Radera** · **✋ Flytta** — panorera (➕/➖ zoomar)
+- **💾 Spara** / **📂 Ladda** — kartor sparas i webbläsaren
+- **▶️ Spela** — testa kartan direkt
+
+Sparade kartor dyker upp i menyns **🗺️ Karta**-lista — välj en och tryck *Skapa gård*
+så spelar hela familjen på din egen karta (den skickas automatiskt till alla som ansluter).
+
 ## Styrning
 
 | | Mobil | Dator |

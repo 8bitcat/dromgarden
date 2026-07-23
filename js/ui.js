@@ -27,6 +27,23 @@ export class UI {
     $('btnSell').onclick = () => this.cb.onOpenSell?.();
   }
 
+  // Kartval + kartbyggare
+  initMaps(cb) {
+    this.mapsCb = cb;
+    $('btnEditor').onclick = () => cb.onEditor?.();
+    this.refreshMapList();
+  }
+  refreshMapList() {
+    const sel = $('mapSelect'); if (!sel || !this.mapsCb) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">🏡 Standardgården</option>';
+    for (const n of this.mapsCb.listMaps?.() || []) {
+      const o = document.createElement('option'); o.value = n; o.textContent = '🗺️ ' + n; sel.appendChild(o);
+    }
+    sel.value = cur;
+  }
+  selectedMap() { return $('mapSelect') ? $('mapSelect').value : ''; }
+
   name() { return ($('nameInput').value || '').trim().slice(0, 12) || 'Bonde'; }
   joinCode() { return ($('joinCode').value || '').trim().toUpperCase(); }
   menuMsg(t) { $('menuMsg').textContent = t || ''; }

@@ -89,7 +89,8 @@ export function drawFarmer(ctx, img, row, frame, cx, footY, scale, flip) {
 export function drawAnimalSprite(ctx, img, frame, dir, cx, footY, scale) {
   const dw = AFRAME * scale, dh = AFRAME * scale;
   const dx = Math.round(cx - dw / 2);
-  const dy = Math.round(footY - dh * 0.9);
+  // djurens fötter sitter vid ~y31/48 = 0.65 i rutan → förankra där så de står på skuggan
+  const dy = Math.round(footY - dh * 0.65);
   ctx.drawImage(img, frame * AFRAME, dir * AFRAME, AFRAME, AFRAME, dx, dy, dw, dh);
 }
 

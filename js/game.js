@@ -1,10 +1,11 @@
 // DRÖMGÅRDEN — huvudlogik: spelare, djur, verktyg, rendering, spelloop och nät-glue.
-import { World, TILE, CROPS, CROP_KEYS } from './world.js?v=8';
-import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js?v=8';
-import { Net } from './net.js?v=8';
-import { UI } from './ui.js?v=8';
-import { Input } from './input.js?v=8';
-import { Editor } from './editor.js?v=8';
+import { World, TILE, CROPS, CROP_KEYS } from './world.js?v=9';
+import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js?v=9';
+import { Net } from './net.js?v=9';
+import { UI } from './ui.js?v=9';
+import { Input } from './input.js?v=9';
+import { Editor } from './editor.js?v=9';
+import { MAPS } from './prefabs.js?v=9';
 
 const SPEED = 4.4;
 const DAY_LEN = 480;
@@ -75,6 +76,7 @@ class Game {
 
   buildWorld() {
     if (this.pendingMap) { this.world.load(this.pendingMap); this.pendingMap = null; }
+    else if (this.pendingPreset && MAPS[this.pendingPreset]) { MAPS[this.pendingPreset].build(this.world); this.pendingPreset = null; }
     else this.world.generate();
     this.spawnAnimals();
   }
@@ -83,9 +85,10 @@ class Game {
   start(mode) {
     const name = this.ui.name();
     // vald karta i menyn (om ingen redan satt av editorn)
-    if (!this.pendingMap && (mode === 'solo' || mode === 'host')) {
+    if (!this.pendingMap && !this.pendingPreset && (mode === 'solo' || mode === 'host')) {
       const mn = this.ui.selectedMap();
-      if (mn) this.pendingMap = this.editor.loadSaved(mn);
+      if (mn.startsWith('#')) this.pendingPreset = mn.slice(1);
+      else if (mn) this.pendingMap = this.editor.loadSaved(mn);
     }
     if (mode === 'solo') {
       this.mode = 'solo'; this.myId = 'host';
@@ -431,10 +434,10 @@ class Game {
   }
 
   drawAnimal(ctx, a, S) {
-    const cx = a.x * S - this.cam.x, footY = a.y * S - this.cam.y + S * 0.28;
-    drawShadow(ctx, this.assets.img.shadow, cx, footY, S * 0.7, S * 0.28);
+    const cx = a.x * S - this.cam.x, footY = a.y * S - this.cam.y + S * 0.42;
+    drawShadow(ctx, this.assets.img.shadow, cx, footY, S * 0.62, S * 0.24);
     const meta = ANIM[a.type], frame = Math.floor(this.now * meta.fps) % meta.frames;
-    drawAnimalSprite(ctx, this.assets.img[a.type], frame, a.dir, cx, footY, this.scale * 0.9);
+    drawAnimalSprite(ctx, this.assets.img[a.type], frame, a.dir, cx, footY, this.scale * (a.type === 'cow' ? 0.8 : 0.68));
     if (a.ready) this.drawReadyIcon(ctx, a.type, cx, footY - S * 1.45 + Math.sin(this.now * 3) * S * 0.1, S);
   }
 

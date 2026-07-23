@@ -1,16 +1,19 @@
 // DRÖMGÅRDEN — kartbyggaren. Måla mark/objekt/djur, väggar, åker, startpunkt.
 // Bygger paletten från ALLA sprite-ark. Sparar kartor i localStorage.
-import { World, TILE, MAP_W, MAP_H } from './world.js?v=8';
-import { buildPalette } from './brushes.js?v=8';
+import { World, TILE, MAP_W, MAP_H } from './world.js?v=9';
+import { buildPalette } from './brushes.js?v=9';
+import { PREFABS, MAPS, captureRegion, stampData } from './prefabs.js?v=9';
 
 const STORE = 'dromgarden-maps';
+const PSTORE = 'dromgarden-prefabs';
 const TOOLS = [
-  { k: 'paint', e: '🖌️', n: 'Måla' },
-  { k: 'wall',  e: '🧱', n: 'Vägg' },
-  { k: 'farm',  e: '🌱', n: 'Åker' },
-  { k: 'spawn', e: '🚩', n: 'Start' },
-  { k: 'erase', e: '🧽', n: 'Radera' },
-  { k: 'pan',   e: '✋', n: 'Flytta' },
+  { k: 'paint',  e: '🖌️', n: 'Måla' },
+  { k: 'select', e: '⬚', n: 'Markera' },
+  { k: 'wall',   e: '🧱', n: 'Vägg' },
+  { k: 'farm',   e: '🌱', n: 'Åker' },
+  { k: 'spawn',  e: '🚩', n: 'Start' },
+  { k: 'erase',  e: '🧽', n: 'Radera' },
+  { k: 'pan',    e: '✋', n: 'Flytta' },
 ];
 
 export class Editor {
@@ -68,6 +71,7 @@ export class Editor {
         <div class="edActions">
           <button data-a="zoomout">➖</button>
           <button data-a="zoomin">➕</button>
+          <button data-a="savebit">⭐ Spara bit</button>
           <button data-a="save">💾 Spara</button>
           <button data-a="load">📂 Ladda</button>
           <button data-a="play" class="prim">▶️ Spela</button>
@@ -75,7 +79,7 @@ export class Editor {
         </div>
       </div>
       <div class="edMain"><canvas id="edCanvas"></canvas>
-        <div class="edHelp">Välj en ruta i paletten och måla på kartan. 🧱 gör väggar (går ej igenom), 🌱 markerar åker (går att odla), 🚩 sätter start. Zooma med ➕/➖.</div>
+        <div class="edHelp">🏗️ Färdiga bitar: välj hus/åker/djurgård och klicka ut. ⬚ Markera drar en ruta → ⭐ Spara bit för att återanvända. 🖌️ målar tiles, 🧱 vägg, 🌱 åker, 🚩 start.</div>
       </div>
       <div class="edPalette"><div class="edCats"></div><div class="edGrid"></div></div>
       <div class="edModal hidden"><div class="edSheet"><header><b>Mina kartor</b><button data-a="mclose">✕</button></header><div class="edList"></div></div></div>`;
@@ -98,6 +102,7 @@ export class Editor {
       const a = e.target.closest('button')?.dataset.a; if (!a) return;
       if (a === 'zoomin') this.zoom(1);
       else if (a === 'zoomout') this.zoom(-1);
+      else if (a === 'savebit') this.saveBit();
       else if (a === 'save') this.doSave();
       else if (a === 'load') this.showModal();
       else if (a === 'play') this.play();
@@ -105,25 +110,31 @@ export class Editor {
     };
     el.querySelector('[data-a="mclose"]').onclick = () => el.querySelector('.edModal').classList.add('hidden');
 
-    // palett
-    this.cats = buildPalette(this.game.assets);
-    this.cats.unshift({ cat: '🐮 Djur', brushes: [
-      { kind: 'animal', type: 'chicken', img: 'chicken' },
-      { kind: 'animal', type: 'cow', img: 'cow' },
-    ] });
-    const catsEl = el.querySelector('.edCats');
+    // palett: färdiga bitar + egna bitar + djur + alla tile-ark
+    this.buildCats();
+  }
+
+  buildCats() {
+    this.cats = [
+      { cat: '🏗️ Färdiga bitar', brushes: PREFABS.map((p) => ({ kind: 'prefab', prefab: p })) },
+      { cat: '⭐ Mina bitar', brushes: this.listBits().map((n) => ({ kind: 'custombit', name: n })) },
+      { cat: '🐮 Djur', brushes: [{ kind: 'animal', type: 'chicken', img: 'chicken' }, { kind: 'animal', type: 'cow', img: 'cow' }] },
+      ...buildPalette(this.game.assets),
+    ];
+    const catsEl = this.el.querySelector('.edCats'); catsEl.innerHTML = '';
     this.cats.forEach((c, i) => {
       const b = document.createElement('button'); b.className = 'edCat'; b.textContent = c.cat;
       b.onclick = () => this.showCat(i, b);
       catsEl.appendChild(b);
     });
     this.showCat(0, catsEl.firstChild);
-
-    // pekhändelser
-    this._bindPointer();
-    window.addEventListener('resize', () => { if (this.running) this.resize(); });
-    this.built = true;
+    if (!this._boundOnce) { this._bindPointer(); window.addEventListener('resize', () => { if (this.running) this.resize(); }); this._boundOnce = true; this.built = true; }
   }
+
+  // egna bitar (localStorage)
+  _allBits() { try { return JSON.parse(localStorage.getItem(PSTORE) || '{}'); } catch { return {}; } }
+  listBits() { return Object.keys(this._allBits()); }
+  getBit(n) { return this._allBits()[n] || null; }
 
   setTool(k) {
     this.tool = k;
@@ -141,11 +152,19 @@ export class Editor {
     this.el.querySelectorAll('.edCat').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     const grid = this.el.querySelector('.edGrid'); grid.innerHTML = '';
+    const pick = (br, node) => { this.brush = br; this.setTool('paint'); grid.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel')); node.classList.add('sel'); this.drawBrushPreview(); };
     for (const br of this.cats[i].brushes) {
-      const c = document.createElement('canvas'); c.width = 32; c.height = 32; c.className = 'edCell';
-      this.drawBrush(c.getContext('2d'), br, 0, 0, 32);
-      c.onclick = () => { this.brush = br; this.setTool('paint'); grid.querySelectorAll('.edCell').forEach((x) => x.classList.remove('sel')); c.classList.add('sel'); this.drawBrushPreview(); };
-      grid.appendChild(c);
+      if (br.kind === 'prefab' || br.kind === 'custombit') {
+        const b = document.createElement('button'); b.className = 'edBit';
+        b.textContent = br.kind === 'prefab' ? `${br.prefab.emoji} ${br.prefab.name}` : `⭐ ${br.name}`;
+        b.onclick = () => pick(br, b);
+        grid.appendChild(b);
+      } else {
+        const c = document.createElement('canvas'); c.width = 32; c.height = 32; c.className = 'edCell';
+        this.drawBrush(c.getContext('2d'), br, 0, 0, 32);
+        c.onclick = () => pick(br, c);
+        grid.appendChild(c);
+      }
     }
   }
 
@@ -156,6 +175,7 @@ export class Editor {
     if (br.kind === 'cell') { ctx.drawImage(img[br.img], br.sx, br.sy, 16, 16, dx, dy, box, box); }
     else if (br.kind === 'stamp') { const s = Math.min(box / (br.sw / 16), box / (br.sh / 16)); const w = (br.sw / 16) * s, h = (br.sh / 16) * s; ctx.drawImage(img[br.img], br.sx, br.sy, br.sw, br.sh, dx + (box - w) / 2, dy + (box - h) / 2, w, h); }
     else if (br.kind === 'animal') { ctx.drawImage(img[br.img], 0, 3 * 48, 48, 48, dx, dy, box, box); }
+    else if (br.kind === 'prefab' || br.kind === 'custombit') { ctx.font = `${Math.round(box * 0.7)}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(br.kind === 'prefab' ? br.prefab.emoji : '⭐', dx + box / 2, dy + box / 2); ctx.textBaseline = 'alphabetic'; }
   }
   drawBrushPreview() { const c = this.brushCv.getContext('2d'); c.clearRect(0, 0, 34, 34); if (this.brush) this.drawBrush(c, this.brush, 1, 1, 32); }
 
@@ -167,13 +187,17 @@ export class Editor {
       this.cv.setPointerCapture(e.pointerId);
       const p = pt(e); this.pointer.down = true; this.pointer.lastX = p.x; this.pointer.lastY = p.y;
       if (this.tool === 'pan') { this.pointer.panning = true; return; }
-      const t = tile(p); this.paintAt(t.x, t.y, true);
+      const t = tile(p);
+      if (this.tool === 'select') { this.selStart = t; this.sel = { x0: t.x, y0: t.y, x1: t.x, y1: t.y }; return; }
+      this.paintAt(t.x, t.y, true);
     });
     this.cv.addEventListener('pointermove', (e) => {
       const p = pt(e); this.hover = tile(p);
       if (!this.pointer.down) return;
       if (this.pointer.panning) { this.cam.x -= p.x - this.pointer.lastX; this.cam.y -= p.y - this.pointer.lastY; this.pointer.lastX = p.x; this.pointer.lastY = p.y; this.clampCam(); return; }
-      const t = tile(p); this.paintAt(t.x, t.y, false);
+      const t = tile(p);
+      if (this.tool === 'select' && this.selStart) { this.sel = { x0: Math.min(this.selStart.x, t.x), y0: Math.min(this.selStart.y, t.y), x1: Math.max(this.selStart.x, t.x), y1: Math.max(this.selStart.y, t.y) }; return; }
+      this.paintAt(t.x, t.y, false);
     });
     const up = () => { this.pointer.down = false; this.pointer.panning = false; };
     this.cv.addEventListener('pointerup', up);
@@ -188,11 +212,24 @@ export class Editor {
     if (this.tool === 'farm') { w.setFarm(x, y, 1); return; }
     if (this.tool === 'spawn') { w.spawn = { x, y }; return; }
     if (this.tool === 'paint') {
-      const br = this.brush; if (!br) return;
+      const br = this.brush; if (!br) { if (isDown) this.game.ui.toast('Välj något i paletten först 🎨'); return; }
       if (br.kind === 'cell') { w.setGround(x, y, [br.img, br.col, br.row]); }
       else if (isDown && br.kind === 'stamp') { w.addObject({ img: br.img, sx: br.sx, sy: br.sy, sw: br.sw, sh: br.sh, tx: x, ty: y, fw: br.fw, fh: br.fh }); }
       else if (isDown && br.kind === 'animal') { w.animalSpawns.push({ type: br.type, x: x + 0.5, y: y + 0.5 }); }
+      else if (isDown && br.kind === 'prefab') { br.prefab.stamp(w, x, y); }
+      else if (isDown && br.kind === 'custombit') { const d = this.getBit(br.name); if (d) stampData(w, d, x, y); }
     }
+  }
+
+  saveBit() {
+    if (!this.sel) { this.game.ui.toast('Markera en yta med ⬚-verktyget först'); return; }
+    const { x0, y0, x1, y1 } = this.sel;
+    const data = captureRegion(this.world, x0, y0, x1, y1);
+    if (!data.cells.length && !data.objects.length && !data.animals.length) { this.game.ui.toast('Inget att spara i markeringen'); return; }
+    const name = (prompt('Namn på biten (t.ex. "Min åker"):', 'Min bit') || '').trim(); if (!name) return;
+    const all = this._allBits(); all[name] = data; localStorage.setItem(PSTORE, JSON.stringify(all));
+    this.buildCats();
+    this.game.ui.toast('Sparade biten "' + name + '" ⭐ — finns nu i paletten');
   }
 
   doSave() {
@@ -204,17 +241,27 @@ export class Editor {
   }
   showModal() {
     const list = this.el.querySelector('.edList'); list.innerHTML = '';
+    const close = () => this.el.querySelector('.edModal').classList.add('hidden');
+    // färdiga mysiga kartor att utgå ifrån
+    const hdr = document.createElement('p'); hdr.className = 'muted'; hdr.textContent = 'Färdiga kartor att bygga vidare på:'; list.appendChild(hdr);
+    for (const [key, m] of Object.entries(MAPS)) {
+      const row = document.createElement('div'); row.className = 'edLrow';
+      row.innerHTML = `<span>🗺️ ${m.name}</span>`;
+      const load = document.createElement('button'); load.textContent = 'Öppna'; load.onclick = () => { m.build(this.world); this.currentName = null; this.centerOn(this.world.spawn); close(); };
+      row.append(load); list.appendChild(row);
+    }
     const names = this.listSaved();
-    if (!names.length) { list.innerHTML = '<p class="muted">Inga sparade kartor än.</p>'; }
+    if (names.length) { const h2 = document.createElement('p'); h2.className = 'muted'; h2.textContent = 'Mina sparade kartor:'; list.appendChild(h2); }
     names.forEach((n) => {
       const row = document.createElement('div'); row.className = 'edLrow';
       row.innerHTML = `<span>${n}</span>`;
-      const load = document.createElement('button'); load.textContent = 'Öppna'; load.onclick = () => { this.world.load(this.loadSaved(n)); this.currentName = n; this.el.querySelector('.edModal').classList.add('hidden'); };
+      const load = document.createElement('button'); load.textContent = 'Öppna'; load.onclick = () => { this.world.load(this.loadSaved(n)); this.currentName = n; close(); };
       const del = document.createElement('button'); del.textContent = '🗑️'; del.className = 'del'; del.onclick = () => { this.deleteMap(n); this.showModal(); this.game.ui.refreshMapList?.(); };
       row.append(load, del); list.appendChild(row);
     });
     this.el.querySelector('.edModal').classList.remove('hidden');
   }
+  centerOn(sp) { if (!sp) return; this.cam.x = sp.x * TILE * this.scale - this.cv.clientWidth / 2; this.cam.y = sp.y * TILE * this.scale - this.cv.clientHeight / 2; this.clampCam(); }
 
   // ---- Render ----------------------------------------------------------
   resize() {
@@ -241,10 +288,11 @@ export class Editor {
     // objekt (djup-sorterade)
     const objs = this.world.objects.filter((o) => !(o.tx > c1 + 1 || o.tx + o.fw < c0 - 1 || o.ty > r1 + 2 || o.ty + o.fh < r0 - 6)).sort((a, b) => this.world.objFootY(a, S) - this.world.objFootY(b, S));
     for (const o of objs) this.world.drawObject(ctx, o, this.cam.x, this.cam.y, S);
-    // djur-spawns
+    // djur-spawns (samma jordade förankring som spelet)
     for (const a of this.world.animalSpawns) {
       const img = this.game.assets.img[a.type];
-      if (img) ctx.drawImage(img, 0, 3 * 48, 48, 48, a.x * S - this.cam.x - S, a.y * S - this.cam.y - S * 1.4, S * 2, S * 2);
+      const sz = S * (a.type === 'cow' ? 1.6 : 1.36);
+      if (img) ctx.drawImage(img, 0, 3 * 48, 48, 48, a.x * S - this.cam.x - sz / 2, a.y * S - this.cam.y - sz * 0.65, sz, sz);
     }
     // overlays: åker (grön) + vägg (röd) + start
     for (let y = r0; y <= r1; y++) for (let x = c0; x <= c1; x++) {
@@ -258,7 +306,14 @@ export class Editor {
     ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
     for (let x = c0; x <= c1 + 1; x++) { ctx.beginPath(); ctx.moveTo(x * S - this.cam.x, 0); ctx.lineTo(x * S - this.cam.x, vh); ctx.stroke(); }
     for (let y = r0; y <= r1 + 1; y++) { ctx.beginPath(); ctx.moveTo(0, y * S - this.cam.y); ctx.lineTo(vw, y * S - this.cam.y); ctx.stroke(); }
+    // markering (⬚)
+    if (this.sel) {
+      const { x0, y0, x1, y1 } = this.sel;
+      ctx.fillStyle = 'rgba(255,214,106,0.22)'; ctx.fillRect(x0 * S - this.cam.x, y0 * S - this.cam.y, (x1 - x0 + 1) * S, (y1 - y0 + 1) * S);
+      ctx.strokeStyle = '#ffd36a'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]);
+      ctx.strokeRect(x0 * S - this.cam.x, y0 * S - this.cam.y, (x1 - x0 + 1) * S, (y1 - y0 + 1) * S); ctx.setLineDash([]);
+    }
     // hover-ruta
-    if (this.hover && this.world.inBounds(this.hover.x, this.hover.y)) { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.strokeRect(this.hover.x * S - this.cam.x, this.hover.y * S - this.cam.y, S, S); }
+    if (this.tool !== 'select' && this.hover && this.world.inBounds(this.hover.x, this.hover.y)) { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2; ctx.strokeRect(this.hover.x * S - this.cam.x, this.hover.y * S - this.cam.y, S, S); }
   }
 }

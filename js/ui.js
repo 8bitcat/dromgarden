@@ -1,5 +1,6 @@
 // DRÖMGÅRDEN — allt DOM/UI: startmeny, HUD, verktygsrad, butik, säljpanel, toasts.
-import { CROPS, CROP_KEYS } from './world.js?v=8';
+import { CROPS, CROP_KEYS } from './world.js?v=9';
+import { MAPS } from './prefabs.js?v=9';
 
 const $ = (id) => document.getElementById(id);
 
@@ -37,6 +38,9 @@ export class UI {
     const sel = $('mapSelect'); if (!sel || !this.mapsCb) return;
     const cur = sel.value;
     sel.innerHTML = '<option value="">🏡 Standardgården</option>';
+    for (const [key, m] of Object.entries(MAPS)) {
+      const o = document.createElement('option'); o.value = '#' + key; o.textContent = '🌸 ' + m.name; sel.appendChild(o);
+    }
     for (const n of this.mapsCb.listMaps?.() || []) {
       const o = document.createElement('option'); o.value = n; o.textContent = '🗺️ ' + n; sel.appendChild(o);
     }

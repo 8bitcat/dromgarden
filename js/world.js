@@ -1,7 +1,7 @@
 // DRÖMGÅRDEN — världen som en enhetlig, data-driven modell.
 // Samma struktur används av (a) den genererade standardgården och (b) egna kartor
 // från kartbyggaren. Allt är JSON-vänligt → funkar för både localStorage och co-op-snapshot.
-import { blitCell, blit } from './assets.js?v=8';
+import { blitCell, blit } from './assets.js?v=9';
 
 export const TILE = 16;
 export const MAP_W = 46;
@@ -74,6 +74,9 @@ export class World {
   }
 
   // -- Hjälp för att bygga/redigera --------------------------------------
+  // Placera en odlingsruta direkt (för prefabs/kartor) — kringgår canTill.
+  plot(x, y, cropType, stage, wet) { if (this.inBounds(x, y)) this.plots.set(this.idx(x, y), { wet: !!wet, cropType: cropType || null, stage: stage || 0, grow: 0 }); }
+  waterCell(x, y, x0, y0, w, h) { return ['farm_tiles', ...this._waterCell(x, y, x0, y0, w, h)]; }
   setGround(x, y, cell) { if (this.inBounds(x, y)) { this.ground[this.idx(x, y)] = cell; this._bake = null; } }
   setSolid(x, y, v) { if (this.inBounds(x, y)) this.solid[this.idx(x, y)] = v ? 1 : 0; }
   setFarm(x, y, v) { if (this.inBounds(x, y)) this.farm[this.idx(x, y)] = v ? 1 : 0; }

@@ -14,8 +14,7 @@ export const SOLID = new Set([T.WATER, T.TREE, T.FENCE, T.HOUSE]);
 const TILES = {
   grass: [3, 1],
   path: [5, 12],
-  tilledDry: [1, 12],
-  tilledWet: [6, 16],
+  soil: [6, 16],   // platt uppluckrad jord (mörkbrun inre-tile, inga runda kanter)
   tuft: [[0, 0], [0, 1], [0, 2]],
   flower: [[1, 1], [1, 2]],
   reeds: [8, 9],
@@ -23,7 +22,7 @@ const TILES = {
 };
 // Källor i farm_objects.png (px x,y,w,h)
 const OBJ = {
-  tree: [[48, 0, 32, 64], [96, 0, 32, 64]],
+  tree: [[48, 0, 32, 80], [96, 0, 32, 80]],   // hela trädet = 2×5 rutor (rot på rad 4)
   house: [0, 96, 80, 95],
   crate: [16, 64, 16, 16],
   fenceH: [16, 0, 16, 16],
@@ -229,8 +228,8 @@ export class World {
   drawPlot(ctx, tx, ty, px, py, S) {
     if (this.get(tx, ty) !== T.SOIL) return;
     const p = this.plots.get(this.idx(tx, ty));
-    const src = p && p.wet ? TILES.tilledWet : TILES.tilledDry;
-    blitCell(ctx, this.A.img.tiles, src[0], src[1], px, py, S);
+    blitCell(ctx, this.A.img.tiles, TILES.soil[0], TILES.soil[1], px, py, S);
+    if (p && p.wet) { ctx.fillStyle = 'rgba(35,25,60,0.34)'; ctx.fillRect(px, py, S, S); } // vått = mörkare
     if (p && p.cropType) {
       const def = CROPS[p.cropType];
       const col = 1 + Math.min(p.stage, def.stages - 1);   // kol 1-4

@@ -1,6 +1,6 @@
 // DRÖMGÅRDEN — allt DOM/UI: startmeny, HUD, verktygsrad, butik, säljpanel, toasts.
-import { CROPS, CROP_KEYS } from './world.js?v=12';
-import { MAPS } from './prefabs.js?v=12';
+import { CROPS, CROP_KEYS } from './world.js?v=13';
+import { MAPS } from './prefabs.js?v=13';
 
 const $ = (id) => document.getElementById(id);
 

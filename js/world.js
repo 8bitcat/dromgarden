@@ -1,7 +1,7 @@
 // DRÖMGÅRDEN — världen som en enhetlig, data-driven modell.
 // Samma struktur används av (a) den genererade standardgården och (b) egna kartor
 // från kartbyggaren. Allt är JSON-vänligt → funkar för både localStorage och co-op-snapshot.
-import { blitCell, blit } from './assets.js?v=12';
+import { blitCell, blit } from './assets.js?v=13';
 
 export const TILE = 16;
 export const MAP_W = 46;
@@ -11,7 +11,7 @@ const GRASS = ['farm_tiles', 3, 1];          // standard-marktile
 const TILES = {
   path: [6, 16],   // brun grus/jordgång
   // uppluckrad åker = ljustan autotile-block (kol 4-7) med mörka kanter; single = fårad ruta
-  till: { c: [5, 12], t: [5, 11], b: [5, 13], l: [4, 12], r: [7, 12], tl: [4, 11], tr: [7, 11], bl: [4, 13], br: [7, 13], single: [1, 13] },
+  till: { c: [6, 12], t: [6, 11], b: [6, 13], l: [5, 12], r: [7, 12], tl: [5, 11], tr: [7, 11], bl: [5, 13], br: [7, 13], single: [1, 13] },
   tuft: [[0, 0], [0, 1], [0, 2]], flower: [[1, 1], [1, 2]],
   water: { c: [3, 8], t: [3, 7], b: [3, 9], l: [2, 8], r: [4, 8], tl: [2, 7], tr: [4, 7], bl: [2, 9], br: [4, 9] },
 };
@@ -221,15 +221,11 @@ export class World {
   }
   drawPlot(ctx, tx, ty, px, py, S) {
     const p = this.plots.get(this.idx(tx, ty)); if (!p) return;
-    // Platt, SÖMLÖS uppluckrad jord + fåror. Autotile gav trasiga "piller" på små ytor
-    // (hörn-tiles kopplas inte ihop) — en heltäckande ruta kopplas alltid till grannarna.
-    ctx.fillStyle = p.wet ? '#bd8340' : '#e8a659';
-    ctx.fillRect(px, py, S + 1, S + 1);
-    ctx.fillStyle = p.wet ? '#8c6027' : '#cc8d3b';
-    const fh = Math.max(1, Math.round(S * 0.07)), m = Math.round(S * 0.08);
-    ctx.fillRect(px + m, py + Math.round(S * 0.2), S - 2 * m, fh);
-    ctx.fillRect(px + m, py + Math.round(S * 0.48), S - 2 * m, fh);
-    ctx.fillRect(px + m, py + Math.round(S * 0.76), S - 2 * m, fh);
+    // KORREKT autotile: kol 5-7 rad 11-13, äkta center (6,12). Sömlöst i alla storlekar,
+    // med paketets fina mörka plätt-kant runt fältet.
+    const c = this._tilledCell(tx, ty);
+    blitCell(ctx, this.A.img.farm_tiles, c[0], c[1], px, py, S);
+    if (p.wet) { ctx.fillStyle = 'rgba(55,32,14,0.32)'; ctx.fillRect(px + S * 0.14, py + S * 0.14, S * 0.72, S * 0.72); } // vått = mörkare mitt
     if (p.cropType) { const def = CROPS[p.cropType]; blitCell(ctx, this.A.img.plants, 1 + Math.min(p.stage, def.stages - 1), def.row, px, py, S); }
   }
 

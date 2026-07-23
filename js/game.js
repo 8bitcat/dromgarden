@@ -1,13 +1,13 @@
 // DRÖMGÅRDEN — huvudlogik: spelare, djur, verktyg, rendering, spelloop och nät-glue.
-import { World, TILE, CROPS, CROP_KEYS } from './world.js?v=11';
-import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js?v=11';
-import { Net } from './net.js?v=11';
-import { UI } from './ui.js?v=11';
-import { Input } from './input.js?v=11';
-import { Editor } from './editor.js?v=11';
-import { MAPS } from './prefabs.js?v=11';
+import { World, TILE, CROPS, CROP_KEYS } from './world.js?v=12';
+import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js?v=12';
+import { Net } from './net.js?v=12';
+import { UI } from './ui.js?v=12';
+import { Input } from './input.js?v=12';
+import { Editor } from './editor.js?v=12';
+import { MAPS } from './prefabs.js?v=12';
 
-const VERSION = 'v11';   // visas i hörnet — bumpa ihop med cache-bust ?v=N
+const VERSION = 'v12';   // visas i hörnet — bumpa ihop med cache-bust ?v=N
 const SPEED = 4.4;
 const DAY_LEN = 480;
 const COLORS = ['#ff7ab6', '#7ac6ff', '#ffd166', '#9be564', '#c78bff', '#ff9f68', '#66d9c8', '#f26d6d'];

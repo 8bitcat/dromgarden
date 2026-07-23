@@ -1,7 +1,7 @@
 // DRÖMGÅRDEN — världen som en enhetlig, data-driven modell.
 // Samma struktur används av (a) den genererade standardgården och (b) egna kartor
 // från kartbyggaren. Allt är JSON-vänligt → funkar för både localStorage och co-op-snapshot.
-import { blitCell, blit } from './assets.js?v=10';
+import { blitCell, blit } from './assets.js?v=11';
 
 export const TILE = 16;
 export const MAP_W = 46;

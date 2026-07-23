@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#f7c6d9">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Drömgården 🌷 — familjens gård</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌷</text></svg>">
 <style>
@@ -49,6 +52,7 @@
   .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #c14f75; }
   .btn.green { background: linear-gradient(180deg, #8fd35b, #5fa838); box-shadow: 0 4px 0 #4a8a2c; }
   .btn.blue { background: linear-gradient(180deg, #6cc4f0, #3d97d0); box-shadow: 0 4px 0 #2f79ad; }
+  .btn.latest { background: linear-gradient(180deg, #ffcf5c, #f2a825); box-shadow: 0 4px 0 #c9871a; color: #5a3d05; font-size: 15px; padding: 12px; }
   .row { display: flex; gap: 8px; }
   .row input { margin-bottom: 0; }
   .row .btn { margin-bottom: 0; white-space: nowrap; width: auto; padding-left: 18px; padding-right: 18px; }
@@ -227,7 +231,8 @@
       <select id="mapSelect"><option value="">🏡 Standardgården</option></select>
     </label>
     <button class="btn purple" id="btnEditor">🎨 Bygg egen karta</button>
-    <p class="hint">Skapa en gård och dela 4-teckens-koden — familjen ansluter från sina mobiler.</p>
+    <button class="btn latest" onclick="location.replace('./?t='+Date.now())">🔄 Spela senaste version</button>
+    <p class="hint">Ser du inte senaste? Tryck 🔄 Spela senaste version. Versionen står i nedre högra hörnet.</p>
   </div>
 </div>
 
@@ -258,6 +263,6 @@
 <div id="version">v?</div>
 
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script type="module" src="js/game.js?v=10"></script>
+<script type="module" src="js/game.js?v=11"></script>
 </body>
 </html>

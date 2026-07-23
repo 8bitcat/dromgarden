@@ -25,7 +25,7 @@ VILDMARKEN). Värdens webbläsare håller den "sanna" gården.
 - **🛒 Butik** för att köpa fler frön
 - **✋ Klappa** djuren i hagen och samla 🥚 ägg / 🥛 mjölk
 
-Grödor: 🥕 Morot · 🥬 Kål · 🎃 Pumpa · 🍓 Jordgubbe · 🌾 Vete.
+Grödor: 🥕 Morot · 🥔 Potatis · 🥬 Sallad · 🍓 Jordgubbe · 🎃 Pumpa.
 
 ## Styrning
 
@@ -37,8 +37,9 @@ Grödor: 🥕 Morot · 🥬 Kål · 🎃 Pumpa · 🍓 Jordgubbe · 🌾 Vete.
 
 ## Teknik
 
-Ren vanilla JS + Canvas 2D, ES-moduler. Grafik från **Little Dreamyland** (figurer, djur)
-kombinerat med procedurellt ritad mark och grödor för perfekt passform. Co-op via
+Ren vanilla JS + Canvas 2D, ES-moduler. Grafik från **Tiny Wonder Farm** — riktig
+terräng-tilemap (gräs, vatten-autotile, uppluckrad/våt jord), grödor i 4 växtstadier,
+färdigt torp, träd och staket. Djur (ko/höns) från Little Dreamyland. Co-op via
 **PeerJS** (host-auktoritativ). Ligger på **GitHub Pages** — statisk sajt.
 
 ```

@@ -139,6 +139,10 @@
   .toastLine { background: rgba(40,28,40,0.9); color: #fff; padding: 9px 16px; border-radius: 14px; font-size: 14px; font-weight: 600; opacity: 0; transform: translateY(-8px); transition: all .3s; text-align: center; }
   .toastLine.show { opacity: 1; transform: translateY(0); }
 
+  /* ---------- Versionsstämpel ---------- */
+  #version { position: fixed; right: 6px; bottom: 4px; z-index: 100; font-size: 12px; font-weight: 700;
+    color: rgba(0,0,0,0.45); background: rgba(255,255,255,0.55); padding: 2px 8px; border-radius: 8px; pointer-events: none; font-family: system-ui, sans-serif; }
+
   /* ---------- Meny-extra ---------- */
   .btn.purple { background: linear-gradient(180deg,#c78bff,#9a5fd6); box-shadow: 0 4px 0 #7a45b3; }
   .maprow { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:700; color:var(--ink); margin:2px 0 10px; }
@@ -251,7 +255,9 @@
   </div>
 </div>
 
+<div id="version">v?</div>
+
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script type="module" src="js/game.js?v=9"></script>
+<script type="module" src="js/game.js?v=10"></script>
 </body>
 </html>

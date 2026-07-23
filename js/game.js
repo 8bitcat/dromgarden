@@ -1,12 +1,13 @@
 // DRÖMGÅRDEN — huvudlogik: spelare, djur, verktyg, rendering, spelloop och nät-glue.
-import { World, TILE, CROPS, CROP_KEYS } from './world.js?v=9';
-import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js?v=9';
-import { Net } from './net.js?v=9';
-import { UI } from './ui.js?v=9';
-import { Input } from './input.js?v=9';
-import { Editor } from './editor.js?v=9';
-import { MAPS } from './prefabs.js?v=9';
+import { World, TILE, CROPS, CROP_KEYS } from './world.js?v=10';
+import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js?v=10';
+import { Net } from './net.js?v=10';
+import { UI } from './ui.js?v=10';
+import { Input } from './input.js?v=10';
+import { Editor } from './editor.js?v=10';
+import { MAPS } from './prefabs.js?v=10';
 
+const VERSION = 'v10';   // visas i hörnet — bumpa ihop med cache-bust ?v=N
 const SPEED = 4.4;
 const DAY_LEN = 480;
 const COLORS = ['#ff7ab6', '#7ac6ff', '#ffd166', '#9be564', '#c78bff', '#ff9f68', '#66d9c8', '#f26d6d'];
@@ -43,6 +44,7 @@ class Game {
   }
 
   async boot() {
+    const vEl = document.getElementById('version'); if (vEl) vEl.textContent = VERSION;
     this.assets = await loadAssets();
     this.world.setAssets(this.assets);
     this.ui.init({

@@ -31,7 +31,7 @@ class Game {
     this.myId = 'host';
     this.players = new Map();
     this.animals = [];
-    this.shared = { coins: 60, seeds: { morot: 6, potatis: 4, sallad: 3, jordgubbe: 3, pumpa: 1 }, produce: {}, day: 1, time: 6 };
+    this.shared = { coins: 60, seeds: { morot: 6, potatis: 4, sallad: 3, jordgubbe: 3, pumpa: 1 }, produce: {}, day: 1, time: 8 };
     this.tool = 0;
     this.selectedSeed = CROP_KEYS[0];
     this.cam = { x: 0, y: 0 };
@@ -435,10 +435,21 @@ class Game {
     drawShadow(ctx, this.assets.img.shadow, cx, footY, S * 0.7, S * 0.28);
     const meta = ANIM[a.type], frame = Math.floor(this.now * meta.fps) % meta.frames;
     drawAnimalSprite(ctx, this.assets.img[a.type], frame, a.dir, cx, footY, this.scale * 0.9);
-    if (a.ready) {
-      const by = footY - S * 1.5 + Math.sin(this.now * 3) * S * 0.1;
-      ctx.font = `${Math.round(S * 0.85)}px serif`; ctx.textAlign = 'center';
-      ctx.fillText(a.type === 'cow' ? '🥛' : '🥚', cx, by);
+    if (a.ready) this.drawReadyIcon(ctx, a.type, cx, footY - S * 1.45 + Math.sin(this.now * 3) * S * 0.1, S);
+  }
+
+  // Pixelkonst-ikon för färdig produkt (ägg ritas, mjölk = riktig sprite)
+  drawReadyIcon(ctx, type, cx, cy, S) {
+    // liten vit bubbla för kontrast
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, S * 0.44, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (type === 'cow') {
+      const s = S * 0.62; ctx.drawImage(this.assets.img.farm_items, 0, 32, 16, 16, cx - s / 2, cy - s / 2, s, s);
+    } else {
+      const w = S * 0.36, h = S * 0.48;
+      ctx.fillStyle = '#f2e0ac'; ctx.beginPath(); ctx.ellipse(cx, cy + h * 0.05, w / 2, h / 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = Math.max(1.5, S * 0.08); ctx.strokeStyle = '#9c7833'; ctx.stroke();
+      ctx.fillStyle = '#fff6df'; ctx.beginPath(); ctx.ellipse(cx - w * 0.16, cy - h * 0.12, w * 0.18, h * 0.18, 0, 0, Math.PI * 2); ctx.fill();
     }
   }
 
@@ -453,9 +464,12 @@ class Game {
   }
 
   drawNight(ctx) {
+    // Dagtid (07–19) = ingen hinna. Mjuk gryning/skymning, dämpad natt.
     const t = this.shared.time; let dark = 0;
-    if (t >= 20) dark = (t - 20) / 4; else if (t < 6) dark = 1; else if (t < 8) dark = (8 - t) / 2;
-    dark = Math.max(0, Math.min(0.5, dark * 0.5));
+    if (t >= 19) dark = Math.min(1, (t - 19) / 3);   // 19→22 mörknar
+    else if (t < 5) dark = 1;                          // 22→05 natt
+    else if (t < 7) dark = (7 - t) / 2;                // 05→07 ljusnar
+    dark = Math.max(0, Math.min(0.42, dark * 0.42));
     if (dark > 0.01) { ctx.fillStyle = `rgba(20,26,70,${dark})`; ctx.fillRect(0, 0, this.vw, this.vh); }
   }
 }

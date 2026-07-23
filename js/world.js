@@ -9,12 +9,14 @@ export const MAP_H = 34;
 
 const GRASS = ['farm_tiles', 3, 1];          // standard-marktile
 const TILES = {
-  path: [5, 12], soil: [6, 16],
+  path: [6, 16],   // brun grus/jordgång
+  // uppluckrad åker = ljustan autotile-block (kol 4-7) med mörka kanter; single = fårad ruta
+  till: { c: [5, 12], t: [5, 11], b: [5, 13], l: [4, 12], r: [7, 12], tl: [4, 11], tr: [7, 11], bl: [4, 13], br: [7, 13], single: [1, 13] },
   tuft: [[0, 0], [0, 1], [0, 2]], flower: [[1, 1], [1, 2]],
   water: { c: [3, 8], t: [3, 7], b: [3, 9], l: [2, 8], r: [4, 8], tl: [2, 7], tr: [4, 7], bl: [2, 9], br: [4, 9] },
 };
 const OBJ = {
-  tree: [[48, 0, 32, 80], [96, 0, 32, 80]],
+  tree: [[48, 0, 32, 60], [96, 0, 32, 60]],   // BARA trädet (y0-60); under ligger annan dekor
   house: [0, 96, 80, 95],
   crate: [16, 64, 16, 16],
   fence: { h: [1, 0], v: [0, 1] },
@@ -127,12 +129,14 @@ export class World {
     for (let i = 0; i < 3; i++) this.animalSpawns.push({ type: 'chicken', x: nx + 2 + rnd() * (nw - 4), y: ny + 2 + rnd() * (nh - 4) });
     for (let i = 0; i < 2; i++) this.animalSpawns.push({ type: 'cow', x: nx + 2 + rnd() * (nw - 4), y: ny + 2 + rnd() * (nh - 4) });
 
-    // spridda träd + blommor + gräsdetalj
-    for (let i = 0; i < 34; i++) {
-      const x = 2 + Math.floor(rnd() * (this.w - 4)), y = 2 + Math.floor(rnd() * (this.h - 4));
+    // spridda träd (glesa så kronor inte överlappar) + blommor + gräsdetalj
+    const treePos = [];
+    const farFromTrees = (x, y) => treePos.every((t) => Math.abs(t[0] - x) + Math.abs(t[1] - y) > 3);
+    for (let i = 0; i < 60; i++) {
+      const x = 3 + Math.floor(rnd() * (this.w - 6)), y = 3 + Math.floor(rnd() * (this.h - 6));
       if (this.solid[this.idx(x, y)] || this._nearImportant(x, y)) continue;
       const r = rnd();
-      if (r < 0.45) this._tree(x, y);
+      if (r < 0.4) { if (farFromTrees(x, y)) { this._tree(x, y); treePos.push([x, y]); } }
       else { const k = ['tulip', 'white', 'rock', 'clover'][(rnd() * 4) | 0]; this.ground[this.idx(x, y)] = ['farm_objects', ...OBJ.decor[k]]; }
     }
     for (let y = 1; y < this.h - 1; y++) for (let x = 1; x < this.w - 1; x++) {
@@ -203,10 +207,20 @@ export class World {
     if (g) blitCell(ctx, this.A.img[g[0]], g[1], g[2], px, py, S);
   }
 
+  _tilledCell(x, y) {
+    const t = (xx, yy) => this.plots.has(this.idx(xx, yy));
+    const up = t(x, y - 1), dn = t(x, y + 1), le = t(x - 1, y), ri = t(x + 1, y), F = TILES.till;
+    if (!up && !dn && !le && !ri) return F.single;
+    if (!up && !le) return F.tl; if (!up && !ri) return F.tr;
+    if (!dn && !le) return F.bl; if (!dn && !ri) return F.br;
+    if (!up) return F.t; if (!dn) return F.b; if (!le) return F.l; if (!ri) return F.r;
+    return F.c;
+  }
   drawPlot(ctx, tx, ty, px, py, S) {
     const p = this.plots.get(this.idx(tx, ty)); if (!p) return;
-    blitCell(ctx, this.A.img.farm_tiles, TILES.soil[0], TILES.soil[1], px, py, S);
-    if (p.wet) { ctx.fillStyle = 'rgba(35,25,60,0.34)'; ctx.fillRect(px, py, S, S); }
+    const c = this._tilledCell(tx, ty);
+    blitCell(ctx, this.A.img.farm_tiles, c[0], c[1], px, py, S);
+    if (p.wet) { ctx.fillStyle = 'rgba(40,28,60,0.28)'; ctx.fillRect(px + S * 0.08, py + S * 0.08, S * 0.84, S * 0.84); }
     if (p.cropType) { const def = CROPS[p.cropType]; blitCell(ctx, this.A.img.plants, 1 + Math.min(p.stage, def.stages - 1), def.row, px, py, S); }
   }
 

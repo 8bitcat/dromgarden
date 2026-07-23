@@ -26,8 +26,8 @@ const SHEETS = [
 
 // Stora objekt (ritas ovanpå, spelaren går bakom). foot = kollisions-fotavtryck.
 export const STAMPS = [
-  { name: 'Träd', img: 'farm_objects', sx: 48, sy: 0, sw: 32, sh: 80, fw: 1, fh: 1 },
-  { name: 'Träd 2', img: 'farm_objects', sx: 96, sy: 0, sw: 32, sh: 80, fw: 1, fh: 1 },
+  { name: 'Träd', img: 'farm_objects', sx: 48, sy: 0, sw: 32, sh: 60, fw: 1, fh: 1 },
+  { name: 'Träd 2', img: 'farm_objects', sx: 96, sy: 0, sw: 32, sh: 60, fw: 1, fh: 1 },
   { name: 'Hus', img: 'farm_objects', sx: 0, sy: 96, sw: 80, sh: 95, fw: 5, fh: 4 },
 ];
 

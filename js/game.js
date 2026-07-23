@@ -1,10 +1,10 @@
 // DRÖMGÅRDEN — huvudlogik: spelare, djur, verktyg, rendering, spelloop och nät-glue.
-import { World, TILE, CROPS, CROP_KEYS } from './world.js';
-import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js';
-import { Net } from './net.js';
-import { UI } from './ui.js';
-import { Input } from './input.js';
-import { Editor } from './editor.js';
+import { World, TILE, CROPS, CROP_KEYS } from './world.js?v=8';
+import { loadAssets, drawFarmer, drawAnimalSprite, drawShadow, CHAR, ANIM, DIR } from './assets.js?v=8';
+import { Net } from './net.js?v=8';
+import { UI } from './ui.js?v=8';
+import { Input } from './input.js?v=8';
+import { Editor } from './editor.js?v=8';
 
 const SPEED = 4.4;
 const DAY_LEN = 480;

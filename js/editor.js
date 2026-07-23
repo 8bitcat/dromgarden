@@ -1,7 +1,7 @@
 // DRÖMGÅRDEN — kartbyggaren. Måla mark/objekt/djur, väggar, åker, startpunkt.
 // Bygger paletten från ALLA sprite-ark. Sparar kartor i localStorage.
-import { World, TILE, MAP_W, MAP_H } from './world.js';
-import { buildPalette } from './brushes.js';
+import { World, TILE, MAP_W, MAP_H } from './world.js?v=8';
+import { buildPalette } from './brushes.js?v=8';
 
 const STORE = 'dromgarden-maps';
 const TOOLS = [
